@@ -1,7 +1,6 @@
 import subprocess
 import sys
 import os
-import yaml
 from github import Github
 
 # Ensure that the correct number of arguments are provided
@@ -30,7 +29,6 @@ except subprocess.CalledProcessError as e:
     sys.exit(1)
 
 # Use the name of the repository as the directory
-# The directory name is the same as the repository name (e.g., "wiz-test-helm")
 CLONE_DIR = REPO_URL.split("/")[-1].replace(".git", "")
 
 # Change working directory to the cloned repository
@@ -63,8 +61,8 @@ try:
     print(f"Successfully pulled the latest changes for {NEW_BRANCH}.")
 except subprocess.CalledProcessError as e:
     print(f"Error occurred while pulling changes: {e}")
-    print("Merge conflicts detected! Exiting...")
-    sys.exit(1)  # Stop the script if there are conflicts
+    print("Branch might not exist remotely, skipping pull.")
+    pass  # Skip pulling if the branch doesn't exist
 
 # Ensure you're on the correct branch before committing (ensure you're not in detached HEAD)
 subprocess.run(["git", "checkout", NEW_BRANCH], check=True)
@@ -73,26 +71,28 @@ print(f"Switched to the branch {NEW_BRANCH}.")
 # Define the correct path to values.yaml (update based on repo structure)
 VALUES_FILE = "helm/values/values-kestra.yaml"  # Adjust this to match your repo
 
-# Update the image tag in values.yaml
-with open(VALUES_FILE, "r") as f:
-    values = yaml.safe_load(f)
+# Use yq to update the image tag in the values.yaml
+yq_command = f"yq eval '.image.tag = \"{NEW_IMAGE.split(':')[-1]}\"' -i {VALUES_FILE}"
 
-# Ensure that the 'image' key exists before modifying it
-if "image" not in values:
-    print(f"Error: 'image' key not found in {VALUES_FILE}.")
+# Run the yq command
+try:
+    subprocess.run(yq_command, shell=True, check=True)
+    print(f"Successfully updated the image tag in {VALUES_FILE}.")
+except subprocess.CalledProcessError as e:
+    print(f"Error occurred while updating the image tag with yq: {e}")
     sys.exit(1)
-
-values["image"]["tag"] = NEW_IMAGE.split(":")[-1]
-
-# Write the updated values back to the file
-with open(VALUES_FILE, "w") as f:
-    yaml.dump(values, f)
 
 # Commit and push changes
 subprocess.run(["git", "config", "user.name", "AutoBot"], check=True)
 subprocess.run(["git", "config", "user.email", "bot@example.com"], check=True)
 subprocess.run(["git", "add", VALUES_FILE], check=True)
-subprocess.run(["git", "commit", "-m", f"Update image to {NEW_IMAGE}"], check=True)
+
+# Attempt to commit changes (even if nothing changed, it will fail gracefully)
+try:
+    subprocess.run(["git", "commit", "-m", f"Update image to {NEW_IMAGE}"], check=True)
+    print(f"Successfully committed changes.")
+except subprocess.CalledProcessError:
+    print("No changes to commit. Skipping commit.")
 
 # Push the changes
 try:
