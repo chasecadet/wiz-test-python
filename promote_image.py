@@ -68,6 +68,6 @@ from github import Github
 
 g = Github(GITHUB_TOKEN)
 repo = g.get_repo(GITHUB_REPO)
-pr = repo.create_pull(title=f"Promote image {NEW_IMAGE}", body="This PR promotes a new image to the Helm chart.", head=NEW_BRANCH, base=BASE_BRANCH)
+pr = repo.create_pull(title=f"Promote image {NEW_IMAGE}", body="This PR promotes {NEW_IMAGE} to the Helm chart for the Kestra Standalone Server", head=NEW_BRANCH, base=BASE_BRANCH)
 
 print(f"✅ PR created: {pr.html_url}")
