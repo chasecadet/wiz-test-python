@@ -1,2 +1,2 @@
-PyYAML==6.0
+PyYAML
 PyGithub==2.3.0
