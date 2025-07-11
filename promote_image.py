@@ -1,31 +1,53 @@
-import os
 import subprocess
-import yaml
 import sys
-from github import Github
+import os
 
-# Get inputs from env or fallback to defaults
-REPO_URL = os.environ.get("REPO_URL", sys.argv[1])
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", sys.argv[2])
-NEW_IMAGE = os.environ.get("NEW_IMAGE", sys.argv[3])
-GITHUB_REPO = os.environ.get("GITHUB_REPO", sys.argv[4])
-VALUES_FILE = os.environ.get("VALUES_FILE", "charts/mychart/values.yaml")
-BASE_BRANCH = os.environ.get("BASE_BRANCH", "main")
+# Ensure that the correct number of arguments are provided
+if len(sys.argv) < 5:
+    print("Usage: python promote_image.py <GITHUB_USERNAME> <GITHUB_TOKEN> <REPO_URL> <NEW_IMAGE> <GITHUB_REPO>")
+    sys.exit(1)
 
-CLONE_DIR = "/tmp/repo"
-NEW_BRANCH = f"promote/{NEW_IMAGE.split(':')[-1]}"
-PR_TITLE = f"Promote image {NEW_IMAGE}"
-PR_BODY = "This PR promotes a new image to the Helm chart."
+# Get the command-line arguments
+GITHUB_USERNAME = sys.argv[1]  # GitHub username
+GITHUB_TOKEN = sys.argv[2]     # GitHub token
+REPO_URL = sys.argv[3]         # Repo URL (e.g., "chasecadet/wiz-test-helm.git")
+NEW_IMAGE = sys.argv[4]        # New image tag
+GITHUB_REPO = sys.argv[5]      # GitHub repo name
+BASE_BRANCH = "main"           # Default branch
 
-# Clone the repo
-subprocess.run(["rm", "-rf", CLONE_DIR])
-subprocess.run(["git", "clone", REPO_URL, CLONE_DIR], check=True)
-os.chdir(CLONE_DIR)
+# Clone the repository
+clone_command = f"git clone https://{GITHUB_USERNAME}:{GITHUB_TOKEN}@github.com/{REPO_URL}"
+print(f"Cloning repository from https://github.com/{REPO_URL}...")
+
+# Run the clone command and check for errors
+try:
+    subprocess.run(clone_command, shell=True, check=True)
+    print(f"Successfully cloned {REPO_URL}")
+except subprocess.CalledProcessError as e:
+    print(f"Error occurred while cloning the repository: {e}")
+    sys.exit(1)
+
+# Use the name of the repository as the directory
+# The directory name is the same as the repository name (e.g., "wiz-test-helm")
+CLONE_DIR = REPO_URL.split("/")[-1].replace(".git", "")
+
+# Change working directory to the cloned repository
+try:
+    os.chdir(CLONE_DIR)
+    print(f"Changed working directory to {CLONE_DIR}")
+except FileNotFoundError:
+    print(f"Failed to change directory to {CLONE_DIR}")
+    sys.exit(1)
 
 # Create a new branch
+NEW_BRANCH = f"promote/{NEW_IMAGE.split(':')[-1]}"
 subprocess.run(["git", "checkout", "-b", NEW_BRANCH], check=True)
 
-# Update the image tag
+# Define the correct path to values.yaml (update based on repo structure)
+VALUES_FILE = "helm/values/values-kestra.yaml"  # Adjust this to match your repo
+
+# Update the image tag in values.yaml
+import yaml
 with open(VALUES_FILE, "r") as f:
     values = yaml.safe_load(f)
 
@@ -42,8 +64,10 @@ subprocess.run(["git", "commit", "-m", f"Update image to {NEW_IMAGE}"], check=Tr
 subprocess.run(["git", "push", "--set-upstream", "origin", NEW_BRANCH], check=True)
 
 # Create pull request
+from github import Github
+
 g = Github(GITHUB_TOKEN)
 repo = g.get_repo(GITHUB_REPO)
-pr = repo.create_pull(title=PR_TITLE, body=PR_BODY, head=NEW_BRANCH, base=BASE_BRANCH)
+pr = repo.create_pull(title=f"Promote image {NEW_IMAGE}", body="This PR promotes a new image to the Helm chart.", head=NEW_BRANCH, base=BASE_BRANCH)
 
 print(f"✅ PR created: {pr.html_url}")
